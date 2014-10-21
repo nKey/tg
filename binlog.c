@@ -39,7 +39,7 @@
 #include "net.h"
 #include "include.h"
 #include "mtproto-client.h"
-#include "loop.h"
+//#include "loop.h"
 
 #include "tgl.h"
 #include "auto.h"

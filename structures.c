@@ -28,7 +28,7 @@
 #include "mtproto-common.h"
 //#include "telegram.h"
 #include "tree.h"
-#include "loop.h"
+//#include "loop.h"
 #include <openssl/aes.h>
 #include <openssl/bn.h>
 #include <openssl/sha.h>
