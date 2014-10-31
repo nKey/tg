@@ -187,6 +187,7 @@ int tgl_complete_user_list (int index, const char *text, int len, char **R);
 int tgl_complete_chat_list (int index, const char *text, int len, char **R);
 int tgl_complete_encr_chat_list (int index, const char *text, int len, char **R);
 int tgl_complete_peer_list (int index, const char *text, int len, char **R);
+int tgl_get_secret_chat_for_user (tgl_peer_id_t user_id);
 
 #define TGL_PEER_USER 1
 #define TGL_PEER_CHAT 2

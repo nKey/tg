@@ -1961,7 +1961,19 @@ int tgl_complete_peer_list (int index, const char *text, int len, char **R) {
   }
 }
 
-void tgl_free_all (void) { 
+int tgl_get_secret_chat_for_user (tgl_peer_id_t user_id) {
+    int index = 0;
+    while (index < peer_num && (tgl_get_peer_type (Peers[index]->id) != TGL_PEER_ENCR_CHAT || Peers[index]->encr_chat.user_id != tgl_get_peer_id (user_id) || Peers[index]->encr_chat.state != sc_ok)) {
+        index ++;
+    }
+    if (index < peer_num) {
+        return tgl_get_peer_id (Peers[index]->encr_chat.id);
+    } else {
+        return -1;
+    }
+}
+
+void tgl_free_all (void) {
   tree_act_peer (tgl_peer_tree, tgls_free_peer);
   tgl_peer_tree = tree_clear_peer (tgl_peer_tree);
   peer_by_name_tree = tree_clear_peer_by_name (peer_by_name_tree);
