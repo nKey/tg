@@ -164,6 +164,9 @@ void write_secret_chat (tgl_peer_t *_P, void *extra) {
     assert (write (fd, &P->state, 4) == 4);
     assert (write (fd, &P->key_fingerprint, 8) == 8);
     assert (write (fd, &P->key, 256) == 256);
+    assert (write (fd, &P->in_seq_no, 4) == 4);
+    assert (write (fd, &P->last_in_seq_no, 4) == 4);
+    assert (write (fd, &P->out_seq_no, 4) == 4);
 }
 
 void write_secret_chat_file (void) {
