@@ -169,7 +169,7 @@ void write_secret_chat_file (struct tgl_state *TLS) {
     assert (secret_chat_fd >= 0);
     int x = SECRET_CHAT_FILE_MAGIC;
     assert (write (secret_chat_fd, &x, 4) == 4);
-    x = 0;
+    x = 1;
     assert (write (secret_chat_fd, &x, 4) == 4); // version
     assert (write (secret_chat_fd, &x, 4) == 4); // num
     
@@ -260,7 +260,7 @@ void read_auth_file (struct tgl_state *TLS) {
     close (auth_file_fd);
 }
 
-void read_secret_chat (struct tgl_state *TLS, int fd) {
+void read_secret_chat (struct tgl_state *TLS, int fd, int v) {
     int id, l, user_id, admin_id, date, ttl, layer, state;
     long long access_hash, key_fingerprint;
     static char s[1000];
@@ -279,6 +279,12 @@ void read_secret_chat (struct tgl_state *TLS, int fd) {
     assert (read (fd, &state, 4) == 4);
     assert (read (fd, &key_fingerprint, 8) == 8);
     assert (read (fd, &key, 256) == 256);
+    int in_seq_no = 0, out_seq_no = 0, last_in_seq_no = 0;
+    if (v >= 1) {
+        assert (read (fd, &in_seq_no, 4) == 4);
+        assert (read (fd, &last_in_seq_no, 4) == 4);
+        assert (read (fd, &out_seq_no, 4) == 4);
+    }
     
     bl_do_encr_chat_create (TLS, id, user_id, admin_id, s, l);
     struct tgl_secret_chat  *P = (void *)tgl_peer_get (TLS, TGL_MK_ENCR_CHAT (id));
@@ -289,6 +295,9 @@ void read_secret_chat (struct tgl_state *TLS, int fd) {
     bl_do_encr_chat_set_access_hash (TLS, P, access_hash);
     bl_do_encr_chat_set_state (TLS, P, state);
     bl_do_encr_chat_set_key (TLS, P, key, key_fingerprint);
+    if (v >= 1) {
+        bl_do_encr_chat_set_seq (TLS, P, in_seq_no, last_in_seq_no, out_seq_no);
+    }
 }
 
 void read_secret_chat_file (struct tgl_state *TLS) {
@@ -298,12 +307,13 @@ void read_secret_chat_file (struct tgl_state *TLS) {
     int x;
     if (read (secret_chat_fd, &x, 4) < 4) { close (secret_chat_fd); return; }
     if (x != SECRET_CHAT_FILE_MAGIC) { close (secret_chat_fd); return; }
-    assert (read (secret_chat_fd, &x, 4) == 4);
-    assert (!x); // version
+    int v = 0;
+    assert (read (secret_chat_fd, &v, 4) == 4);
+    assert (v == 0 || v == 1); // version
     assert (read (secret_chat_fd, &x, 4) == 4);
     assert (x >= 0);
     while (x --> 0) {
-        read_secret_chat (TLS, secret_chat_fd);
+        read_secret_chat (TLS, secret_chat_fd, v);
     }
     close (secret_chat_fd);
 }
