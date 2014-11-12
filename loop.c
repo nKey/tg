@@ -39,11 +39,6 @@ void _dummy_logprintf(const char *format, ...) {};
 void (*logprintf)(const char *format, ...) = _dummy_logprintf;
 
 
-// global state
-
-extern struct tgl_state *TLS;
-
-
 // config functions
 
 const char *get_downloads_directory (void) {
@@ -57,7 +52,7 @@ const char *get_binlog_file_name (void) {
 
 // loader functions
 
-void read_state_file (void) {
+void read_state_file (struct tgl_state *TLS) {
     int state_file_fd = open (config.get_state_filename (), O_CREAT | O_RDWR, 0600);
     if (state_file_fd < 0) {
         return;
@@ -83,7 +78,7 @@ void read_state_file (void) {
     bl_do_set_date (TLS, date);
 }
 
-void write_state_file (void) {
+void write_state_file (struct tgl_state *TLS) {
     static int wseq;
     static int wpts;
     static int wqts;
@@ -127,7 +122,7 @@ void write_dc (struct tgl_dc *DC, void *extra) {
     assert (write (auth_file_fd, DC->auth_key, 256) == 256);
 }
 
-void write_auth_file (void) {
+void write_auth_file (struct tgl_state *TLS) {
     int auth_file_fd = open (config.get_auth_key_filename (), O_CREAT | O_RDWR, 0600);
     assert (auth_file_fd >= 0);
     int x = DC_SERIALIZED_MAGIC;
@@ -169,7 +164,7 @@ void write_secret_chat (tgl_peer_t *_P, void *extra) {
     assert (write (fd, &P->out_seq_no, 4) == 4);
 }
 
-void write_secret_chat_file (void) {
+void write_secret_chat_file (struct tgl_state *TLS) {
     int secret_chat_fd = open (config.get_secret_chat_filename (), O_CREAT | O_RDWR, 0600);
     assert (secret_chat_fd >= 0);
     int x = SECRET_CHAT_FILE_MAGIC;
@@ -189,7 +184,7 @@ void write_secret_chat_file (void) {
     close (secret_chat_fd);
 }
 
-void read_dc (int auth_file_fd, int id, unsigned ver) {
+void read_dc (struct tgl_state *TLS, int auth_file_fd, int id, unsigned ver) {
     int port = 0;
     assert (read (auth_file_fd, &port, 4) == 4);
     int l = 0;
@@ -210,7 +205,7 @@ void read_dc (int auth_file_fd, int id, unsigned ver) {
     bl_do_dc_signed (TLS, id);
 }
 
-void empty_auth_file (void) {
+void empty_auth_file (struct tgl_state *TLS) {
     if (TLS->test_mode) {
         bl_do_dc_option (TLS, 1, 0, "", strlen (TG_SERVER_TEST_1), TG_SERVER_TEST_1, 443);
         bl_do_dc_option (TLS, 2, 0, "", strlen (TG_SERVER_TEST_2), TG_SERVER_TEST_2, 443);
@@ -226,10 +221,10 @@ void empty_auth_file (void) {
     }
 }
 
-void read_auth_file (void) {
+void read_auth_file (struct tgl_state *TLS) {
     int auth_file_fd = open (config.get_auth_key_filename (), O_CREAT | O_RDWR, 0600);
     if (auth_file_fd < 0) {
-        empty_auth_file ();
+        empty_auth_file (TLS);
         return;
     }
     assert (auth_file_fd >= 0);
@@ -237,7 +232,7 @@ void read_auth_file (void) {
     unsigned m;
     if (read (auth_file_fd, &m, 4) < 4 || (m != DC_SERIALIZED_MAGIC)) {
         close (auth_file_fd);
-        empty_auth_file ();
+        empty_auth_file (TLS);
         return;
     }
     assert (read (auth_file_fd, &x, 4) == 4);
@@ -250,7 +245,7 @@ void read_auth_file (void) {
         int y;
         assert (read (auth_file_fd, &y, 4) == 4);
         if (y) {
-            read_dc (auth_file_fd, i, m);
+            read_dc (TLS, auth_file_fd, i, m);
         }
     }
     bl_do_set_working_dc (TLS, dc_working_num);
@@ -265,7 +260,7 @@ void read_auth_file (void) {
     close (auth_file_fd);
 }
 
-void read_secret_chat (int fd) {
+void read_secret_chat (struct tgl_state *TLS, int fd) {
     int id, l, user_id, admin_id, date, ttl, layer, state;
     long long access_hash, key_fingerprint;
     static char s[1000];
@@ -296,7 +291,7 @@ void read_secret_chat (int fd) {
     bl_do_encr_chat_set_key (TLS, P, key, key_fingerprint);
 }
 
-void read_secret_chat_file (void) {
+void read_secret_chat_file (struct tgl_state *TLS) {
     int secret_chat_fd = open (config.get_secret_chat_filename (), O_RDWR, 0600);
     if (secret_chat_fd < 0) { return; }
     //assert (secret_chat_fd >= 0);
@@ -308,7 +303,7 @@ void read_secret_chat_file (void) {
     assert (read (secret_chat_fd, &x, 4) == 4);
     assert (x >= 0);
     while (x --> 0) {
-        read_secret_chat (secret_chat_fd);
+        read_secret_chat (TLS, secret_chat_fd);
     }
     close (secret_chat_fd);
 }
@@ -317,11 +312,11 @@ void read_secret_chat_file (void) {
 // loop callbacks
 
 struct tgl_dc *cur_a_dc;
-int is_authorized (void) {
+int is_authorized (struct tgl_state *TLS) {
     return tgl_authorized_dc (TLS, cur_a_dc);
 }
 
-int all_authorized (void) {
+int all_authorized (struct tgl_state *TLS) {
     int i;
     for (i = 0; i <= TLS->max_dc_num; i++) if (TLS->DC_list[i]) {
         if (!tgl_authorized_dc (TLS, TLS->DC_list[i])) {
@@ -333,8 +328,7 @@ int all_authorized (void) {
 
 int should_register;
 char *hash;
-void sign_in_callback (struct tgl_state *TLSR, void *extra, int success, int registered, const char *mhash) {
-    assert (TLSR == TLS);
+void sign_in_callback (struct tgl_state *TLS, void *extra, int success, int registered, const char *mhash) {
     if (!success) {
         logprintf("Can not send code");
         exit (1);
@@ -344,25 +338,23 @@ void sign_in_callback (struct tgl_state *TLSR, void *extra, int success, int reg
 }
 
 int signed_in_result;
-void sign_in_result (struct tgl_state *TLSR, void *extra, int success, struct tgl_user *U) {
-    assert (TLSR == TLS);
+void sign_in_result (struct tgl_state *TLS, void *extra, int success, struct tgl_user *U) {
     signed_in_result = success ? 1 : 2;
 }
 
-int signed_in (void) {
+int signed_in (struct tgl_state *TLS) {
     return signed_in_result;
 }
 
-int sent_code (void) {
+int sent_code (struct tgl_state *TLS) {
     return hash != 0;
 }
 
-int dc_signed_in (void) {
+int dc_signed_in (struct tgl_state *TLS) {
     return tgl_signed_dc (TLS, cur_a_dc);
 }
 
-void export_auth_callback (struct tgl_state *TLSR, void *DC, int success) {
-    assert (TLSR == TLS);
+void export_auth_callback (struct tgl_state *TLS, void *DC, int success) {
     if (!success) {
         logprintf ("Can not export auth\n");
         exit (1);
@@ -370,27 +362,25 @@ void export_auth_callback (struct tgl_state *TLSR, void *DC, int success) {
 }
 
 int d_got_ok;
-void get_difference_callback (struct tgl_state *TLSR, void *extra, int success) {
-    assert (TLSR == TLS);
+void get_difference_callback (struct tgl_state *TLS, void *extra, int success) {
     assert (success);
     d_got_ok = 1;
 }
 
-int dgot (void) {
+int dgot (struct tgl_state *TLS) {
     return d_got_ok;
 }
 
-void dlist_cb (struct tgl_state *TLSR, void *callback_extra, int success, int size, tgl_peer_id_t peers[], int last_msg_id[], int unread_count[])  {
-    assert (TLSR == TLS);
+void dlist_cb (struct tgl_state *TLS, void *callback_extra, int success, int size, tgl_peer_id_t peers[], int last_msg_id[], int unread_count[])  {
     d_got_ok = 1;
 }
 
 
 // main loops
 
-void net_loop (int flags, int (*is_end)(void)) {
+void net_loop (struct tgl_state *TLS, int flags, int (*is_end)(struct tgl_state *TLS)) {
     int last_get_state = (int)(time (0));
-    while (!is_end || !is_end ()) {
+    while (!is_end || !is_end (TLS)) {
         event_base_loop (TLS->ev_base, EVLOOP_ONCE);
         if (time (0) - last_get_state > 3600) {
             tgl_do_lookup_state (TLS);
@@ -399,16 +389,16 @@ void net_loop (int flags, int (*is_end)(void)) {
     }
 }
 
-void wait_loop(int (*is_end)(void)) {
-    net_loop (0, is_end);
+void wait_loop(struct tgl_state *TLS, int (*is_end)(struct tgl_state *TLS)) {
+    net_loop (TLS, 0, is_end);
 }
 
-int main_loop (void) {
-    net_loop (1, 0);
+int main_loop (struct tgl_state *TLS) {
+    net_loop (TLS, 1, 0);
     return 0;
 }
 
-int loop(struct tgl_update_callback *upd_cb) {
+int loop(struct tgl_state *TLS, struct tgl_update_callback *upd_cb) {
     logprintf = upd_cb->logprintf;
     tgl_set_binlog_mode (TLS, 0);
     tgl_set_download_directory (TLS, config.get_download_directory ());
@@ -419,9 +409,9 @@ int loop(struct tgl_update_callback *upd_cb) {
     tgl_set_net_methods (TLS, &tgl_conn_methods);
     tgl_set_timer_methods (TLS, &tgl_libevent_timers);
     tgl_init (TLS);
-    read_auth_file ();
-    read_state_file ();
-    read_secret_chat_file ();
+    read_auth_file (TLS);
+    read_state_file (TLS);
+    read_secret_chat_file (TLS);
     if (config.reset_authorization) {
         tgl_peer_t *P = tgl_peer_get (TLS, TGL_MK_USER (TLS->our_id));
         if (P && P->user.phone && config.reset_authorization == 1) {
@@ -430,11 +420,11 @@ int loop(struct tgl_update_callback *upd_cb) {
         }
         bl_do_reset_authorization (TLS);
     }
-    net_loop (0, all_authorized);
+    net_loop (TLS, 0, all_authorized);
     if (!tgl_signed_dc(TLS, TLS->DC_working)) {
         logprintf("Need to login first");
         tgl_do_send_code(TLS, config.get_default_username (), sign_in_callback, 0);
-        net_loop(0, sent_code);
+        net_loop(TLS, 0, sent_code);
         logprintf ("%s\n", should_register ? "phone not registered" : "phone registered");
         if (!should_register) {
             logprintf("Enter SMS code");
@@ -442,7 +432,7 @@ int loop(struct tgl_update_callback *upd_cb) {
             while (1) {
                 const char *sms_code = config.get_sms_code ();
                 tgl_do_send_code_result (TLS, username, hash, sms_code, sign_in_result, 0);
-                net_loop (0, signed_in);
+                net_loop (TLS, 0, signed_in);
                 if (signed_in_result == 1) {
                     break;
                 }
@@ -457,7 +447,7 @@ int loop(struct tgl_update_callback *upd_cb) {
             while (1) {
                 const char *sms_code = config.get_sms_code ();
                 tgl_do_send_code_result_auth (TLS, username, hash, sms_code, first_name, last_name, sign_in_result, 0);
-                net_loop (0, signed_in);
+                net_loop (TLS, 0, signed_in);
                 if (signed_in_result == 1) {
                     break;
                 }
@@ -469,19 +459,19 @@ int loop(struct tgl_update_callback *upd_cb) {
     for (int i = 0; i <= TLS->max_dc_num; i++) if (TLS->DC_list[i] && !tgl_signed_dc (TLS, TLS->DC_list[i])) {
         tgl_do_export_auth (TLS, i, export_auth_callback, (void*)(long)TLS->DC_list[i]);
         cur_a_dc = TLS->DC_list[i];
-        net_loop (0, dc_signed_in);
+        net_loop (TLS, 0, dc_signed_in);
         assert (tgl_signed_dc (TLS, TLS->DC_list[i]));
     }
-    write_auth_file ();
+    write_auth_file (TLS);
     tglm_send_all_unsent (TLS);
     tgl_do_get_difference (TLS, config.sync_from_start, get_difference_callback, 0);
-    net_loop (0, dgot);
+    net_loop (TLS, 0, dgot);
     assert (!(TLS->locks & TGL_LOCK_DIFF));
     TLS->started = 1;
     if (config.wait_dialog_list) {
         d_got_ok = 0;
         tgl_do_get_dialog_list (TLS, dlist_cb, 0);
-        net_loop (0, dgot);
+        net_loop (TLS, 0, dgot);
     }
-    return main_loop();
+    return main_loop(TLS);
 }

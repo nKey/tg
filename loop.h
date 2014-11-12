@@ -21,12 +21,16 @@
 #ifndef __LOOP_H__
 #define __LOOP_H__
 
-struct tgl_update_callback; // fwd declaration
+// fwd declaration
+struct tgl_update_callback;
+struct tgl_state;
 
 struct tgl_config {
+    // flags
     int sync_from_start;
     int wait_dialog_list;
     int reset_authorization;
+    // callbacks
     const char *(*get_first_name) (void);
     const char *(*get_last_name) (void);
     const char *(*get_default_username) (void);
@@ -41,8 +45,8 @@ struct tgl_config {
 
 extern struct tgl_config config; // must be defined by caller
 
-int loop(struct tgl_update_callback *upd_cb);
-void wait_loop(int (*is_end)(void));
-void write_secret_chat_file (void);
+int loop(struct tgl_state *TLS, struct tgl_update_callback *upd_cb);
+void wait_loop(struct tgl_state *TLS, int (*is_end)(struct tgl_state *TLS));
+void write_secret_chat_file (struct tgl_state *TLS);
 
 #endif /* defined(__LOOP_H__) */
